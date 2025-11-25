@@ -1,0 +1,13 @@
+import os
+BASE_DIR = os.path.dirname(__file__)
+GRID_W = int(os.getenv("GRID_W", 40))
+GRID_H = int(os.getenv("GRID_H", 24))
+N_AGENTS = int(os.getenv("N_AGENTS", 6))
+DEFAULT_ALPHA = float(os.getenv("ALPHA", 0.3))
+DEFAULT_GAMMA = float(os.getenv("GAMMA", 0.9))
+DEFAULT_EPS = float(os.getenv("EPS", 0.25))
+EPS_DECAY = float(os.getenv("EPS_DECAY", 0.995))
+SAVE_DIR = os.path.join(os.path.dirname(__file__), "..", "saved")
+os.makedirs(SAVE_DIR, exist_ok=True)
+QTABLE_PATH = os.path.join(SAVE_DIR, "trained_qtables.pkl")
+STATS_PATH = os.path.join(SAVE_DIR, "train_stats.json")
