@@ -1,4 +1,3 @@
-# simple CLI train wrapper
 from sim_manager import SimManager
 if __name__ == '__main__':
     m = SimManager()

@@ -2,7 +2,7 @@
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sim_manager import SimManager
+from .sim_manager import SimManager
 import os
 
 app = FastAPI(title="Farm Multi-Agent API")
@@ -83,3 +83,4 @@ def stop_trained():
     return {'status': 'stopped' if stopped else 'not_running'}
 
 # ejcutar backend: uvicorn main:app --reload
+# ejecutar backend en puerto 8000: uvicorn main:app --host
