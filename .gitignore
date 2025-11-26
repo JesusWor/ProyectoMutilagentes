@@ -2,3 +2,4 @@ __pycache__/
 /ModeloQ-learning/frontend/node_modules
 /ModeloQ-learning/frontend/package-lock.json
 /ModeloQ-learning/frontend/package.json
+/ModeloQ-learning/frontend/vite.config.js
