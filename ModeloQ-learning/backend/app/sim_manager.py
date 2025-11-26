@@ -6,9 +6,9 @@ import pickle
 from collections import defaultdict
 import numpy as np
 
-from config import GRID_W, GRID_H, N_AGENTS, DEFAULT_ALPHA, DEFAULT_GAMMA, DEFAULT_EPS, EPS_DECAY, QTABLE_PATH
-from env import MultiFieldEnv
-from agents import FarmAgent
+from .config import GRID_W, GRID_H, N_AGENTS, DEFAULT_ALPHA, DEFAULT_GAMMA, DEFAULT_EPS, EPS_DECAY, QTABLE_PATH
+from .env import MultiFieldEnv
+from .agents import FarmAgent
 
 class SimManager:
     def __init__(self):
