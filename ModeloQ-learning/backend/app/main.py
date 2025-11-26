@@ -82,5 +82,5 @@ def stop_trained():
     stopped = sim.stop_run_trained()
     return {'status': 'stopped' if stopped else 'not_running'}
 
-# ejcutar backend: uvicorn main:app --reload
+# ejcutar backend: uvicorn app.main:app --reload
 # ejecutar backend en puerto 8000: uvicorn main:app --host

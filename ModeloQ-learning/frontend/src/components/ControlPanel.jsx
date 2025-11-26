@@ -278,7 +278,7 @@ export default function ControlPanel({ onSimData }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
-              width: '40px',
+              width: '80px',
               height: '40px',
               background: 'linear-gradient(135deg, #3b82f6 0%, #9333ea 100%)',
               borderRadius: '8px',
@@ -385,7 +385,7 @@ export default function ControlPanel({ onSimData }) {
                 value={episodes}
                 onChange={e => setEpisodes(+e.target.value)}
                 style={{
-                  width: '100%',
+                  width: '80%',
                   backgroundColor: '#1e293b',
                   border: '1px solid #475569',
                   borderRadius: '8px',
@@ -405,7 +405,7 @@ export default function ControlPanel({ onSimData }) {
                 value={steps}
                 onChange={e => setSteps(+e.target.value)}
                 style={{
-                  width: '100%',
+                  width: '80%',
                   backgroundColor: '#1e293b',
                   border: '1px solid #475569',
                   borderRadius: '8px',
