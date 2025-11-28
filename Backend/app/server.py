@@ -1,32 +1,42 @@
 from fastapi import FastAPI, WebSocket
-import asyncio
-import json
-import math
+import asyncio, json
+from model import OrbitModel
 
-app =  FastAPI()
+app = FastAPI()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    print("Intentando conectar con Unity...")
+
     await websocket.accept()
-    print("¡Unity Conectado!")
+    print("Unity conectado → MULTIAGENTE listo")
+
+    params = dict(N=2, radius=5, speed=0.05)
+    model = OrbitModel(parameters=params)
+    model.setup()
+
+    steps = 0
+    max_steps = 1000   # <<< Tiempo de simulación para generar gráfica
 
     try:
-        t = 0
         while True:
-            t+= 0.05
-            x = math.sin(t) * 5
-            z = math.cos(t) * 5
 
-            data = {
-                "x": x,
-                "y": 0,
-                "z": z
-            }
+            model.step()
+            steps += 1
 
+            # Enviar posiciones a Unity (tiempo real)
+            data = [{"x": a.x, "y":0, "z":a.z} for a in model.agents]
             await websocket.send_text(json.dumps(data))
-            await asyncio.sleep(0.016)
 
+            # Si ya recorrimos N pasos → crear gráfica y reiniciar
+            if steps == max_steps:
+                print("Generando gráfica 2D...")
+                model.plot_paths()
+                print("Gráfica guardada como trayectorias.png")
+                steps = 0  # ← reinicia grafica en ciclo nuevo
+
+            await asyncio.sleep(0.016)
 
     except Exception as e:
         print("Conexión cerrada:", e)
+        model.plot_paths()
+        print("Gráfica generada al finalizar.")
