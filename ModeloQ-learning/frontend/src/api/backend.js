@@ -1,7 +1,11 @@
 import axios from 'axios'
 
+// Usar variable de entorno o fallback a localhost
+// const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000'
+const API_URL = 'http://localhost:8000'
+
 const API = axios.create({ 
-  baseURL: 'http://localhost:8000',
+  baseURL: API_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
@@ -19,7 +23,6 @@ API.interceptors.response.use(
 
 /**
  * Obtiene el estado actual de la simulación
- * Incluye: grid, agentes, blackboard, meta
  */
 export async function getState() {
   try {
@@ -32,8 +35,7 @@ export async function getState() {
 }
 
 /**
- * Inicia el entrenamiento con parámetros específicos
- * @param {Object} payload - { episodes, steps_per_episode, alpha, gamma, eps }
+ * Inicia el entrenamiento
  */
 export async function startTrain(payload) {
   try {
@@ -46,7 +48,7 @@ export async function startTrain(payload) {
 }
 
 /**
- * Detiene el entrenamiento actual
+ * Detiene el entrenamiento
  */
 export async function stopTrain() {
   try {
@@ -59,8 +61,7 @@ export async function stopTrain() {
 }
 
 /**
- * Actualiza los parámetros de Q-Learning
- * @param {Object} params - { alpha?, gamma?, eps?, eps_decay? }
+ * Actualiza parámetros
  */
 export async function updateParams(params) {
   try {
@@ -73,8 +74,7 @@ export async function updateParams(params) {
 }
 
 /**
- * Obtiene estadísticas de entrenamiento
- * Incluye: episodes[], best_reward, best_episode, etc.
+ * Obtiene estadísticas
  */
 export async function getStats() {
   try {
@@ -87,7 +87,7 @@ export async function getStats() {
 }
 
 /**
- * Guarda las tablas Q en disco
+ * Guarda Q-tables
  */
 export async function saveQ() {
   try {
@@ -101,7 +101,7 @@ export async function saveQ() {
 }
 
 /**
- * Carga las tablas Q desde disco
+ * Carga Q-tables
  */
 export async function loadQ() {
   try {
@@ -115,8 +115,7 @@ export async function loadQ() {
 }
 
 /**
- * Inicia la ejecución del modelo entrenado en tiempo real
- * NOTA: Este endpoint NO devuelve frames, solo inicia la ejecución
+ * Ejecuta modelo entrenado
  */
 export async function runTrainedModel() {
   try {
@@ -130,7 +129,7 @@ export async function runTrainedModel() {
 }
 
 /**
- * Detiene la ejecución del modelo entrenado
+ * Detiene modelo entrenado
  */
 export async function stopTrained() {
   try {
@@ -144,8 +143,7 @@ export async function stopTrained() {
 }
 
 /**
- * Obtiene progreso del entrenamiento en tiempo real
- * (polling cada segundo para actualizar UI)
+ * Obtiene progreso de entrenamiento
  */
 export async function getTrainingProgress() {
   try {
@@ -154,14 +152,21 @@ export async function getTrainingProgress() {
       getStats()
     ])
     
+    if (!state || !stats) return null
+    
+    const episodes = stats.episodes || []
+    const lastEp = episodes[episodes.length - 1]
+    
     return {
+      state: state,
       isTraining: state?.meta?.is_training || false,
       isRunning: state?.meta?.is_running_trained || false,
       currentStep: state?.meta?.step || 0,
       totalHarvested: state?.meta?.harvested_total || 0,
-      episodes: stats?.episodes || [],
+      episodes: episodes,
       bestReward: stats?.best_reward || 0,
-      bestEpisode: stats?.best_episode || 0
+      bestEpisode: stats?.best_episode || 0,
+      lastEpisode: lastEp
     }
   } catch (error) {
     console.error('Error getting training progress:', error)
