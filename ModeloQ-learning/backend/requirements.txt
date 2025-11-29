@@ -2,4 +2,7 @@ fastapi
 uvicorn
 pydantic
 numpy
+scipy
+toml
 python-multipart
+aiofiles
