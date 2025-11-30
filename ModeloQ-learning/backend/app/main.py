@@ -1,4 +1,3 @@
-# backend/app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,9 +6,7 @@ from .sim_manager import SimManager
 import os
 import numpy as np
 
-# Función helper para convertir tipos numpy a Python nativos
 def convert_numpy_types(obj):
-    """Convierte tipos numpy a tipos Python nativos para JSON"""
     if isinstance(obj, np.integer):
         return int(obj)
     elif isinstance(obj, np.floating):
@@ -40,8 +37,6 @@ app.add_middleware(
 
 sim = SimManager()
 
-# ========== MODELOS PYDANTIC ==========
-
 class TrainRequest(BaseModel):
     episodes: int = 50
     steps_per_episode: int = 500
@@ -60,11 +55,8 @@ class ControlResponse(BaseModel):
     status: str
     detail: Optional[str] = None
 
-# ========== ENDPOINTS ==========
-
 @app.get('/health')
 def health():
-    """Verificar que el servidor está activo"""
     return {
         'status': 'ok', 
         'service': 'farm-multiagent-api',
@@ -74,21 +66,11 @@ def health():
 
 @app.get('/state')
 def state():
-    """
-    Obtener estado actual de la simulación
-    Incluye: grid, agentes, combustible, fase, estadísticas
-    """
     state_data = sim.get_state()
     return convert_numpy_types(state_data)
 
 @app.post('/train')
 def train(req: TrainRequest):
-    """
-    Iniciar entrenamiento
-    - episodes: número de episodios
-    - steps_per_episode: pasos máximo por episodio
-    - Parámetros de Q-Learning: alpha, gamma, eps
-    """
     sim.params['alpha'] = req.alpha
     sim.params['gamma'] = req.gamma
     sim.params['eps'] = req.eps
@@ -109,13 +91,11 @@ def train(req: TrainRequest):
 
 @app.post('/stop')
 def stop():
-    """Detener entrenamiento actual"""
     sim.stop_training()
     return {'status': 'stopped'}
 
 @app.post('/params')
 def update_params(p: ParamsUpdate):
-    """Actualizar parámetros de Q-Learning"""
     if p.alpha is not None:
         sim.params['alpha'] = p.alpha
     if p.gamma is not None:
@@ -129,7 +109,6 @@ def update_params(p: ParamsUpdate):
 
 @app.post('/save')
 def save():
-    """Guardar Q-tables en disco"""
     sim.save_qs()
     sim.save_stats()
     return {
@@ -140,7 +119,6 @@ def save():
 
 @app.post('/load')
 def load():
-    """Cargar Q-tables desde disco"""
     ok = sim.load_qs()
     return {
         'status': 'loaded' if ok else 'no_file',
@@ -149,13 +127,8 @@ def load():
 
 @app.get('/stats')
 def stats():
-    """
-    Obtener estadísticas de entrenamiento
-    Retorna todos los episodios y métricas
-    """
     stats_data = sim.train_stats.copy()
     
-    # Convertir -inf a un valor JSON válido
     if 'best_reward' in stats_data:
         if stats_data['best_reward'] == float('-inf'):
             stats_data['best_reward'] = 0.0
@@ -165,7 +138,6 @@ def stats():
     if 'best_episode' in stats_data:
         stats_data['best_episode'] = int(stats_data['best_episode'])
     
-    # Convertir episodios
     if 'episodes' in stats_data:
         stats_data['episodes'] = [convert_numpy_types(ep) for ep in stats_data['episodes']]
     
@@ -173,10 +145,6 @@ def stats():
 
 @app.post('/run-trained')
 def run_trained():
-    """
-    Ejecutar modelo entrenado en tiempo real
-    Carga Q-tables y ejecuta agentes en loop infinito
-    """
     if not os.path.exists(sim.QTABLE_PATH):
         sim.load_qs()
 
@@ -188,16 +156,12 @@ def run_trained():
 
 @app.post('/stop-trained')
 def stop_trained():
-    """Detener ejecución del modelo"""
     stopped = sim.stop_run_trained()
     return {'status': 'stopped' if stopped else 'not_running'}
 
 @app.get('/metrics')
 def metrics():
-    """Obtener métricas del entorno actual"""
     env_metrics = sim.env.get_metrics()
-    
-    # Agregar métricas de combustible
     agent_fuel_stats = {
         'avg_fuel_pct': float(sum(a.get_fuel_percentage() for a in sim.agents) / len(sim.agents)),
         'low_fuel_count': int(sum(1 for a in sim.agents if a.is_fuel_low())),
@@ -213,7 +177,6 @@ def metrics():
 
 @app.get('/agents')
 def agents_info():
-    """Obtener información detallada de agentes"""
     agents_data = {
         'agents': [convert_numpy_types(a.get_stats()) for a in sim.agents],
         'total_agents': int(len(sim.agents)),
@@ -232,10 +195,8 @@ def agents_info():
 
 @app.get('/parcels')
 def parcels_info():
-    """Obtener información de las parcelas"""
     parcels_data = []
     for i, parcel in enumerate(sim.env.parcels):
-        # Contar cultivos en cada parcela
         crops_in_parcel = 0
         for y in range(parcel['y_start'], parcel['y_end']):
             for x in range(parcel['x_start'], parcel['x_end']):
@@ -263,9 +224,6 @@ def parcels_info():
 
 @app.get('/training-progress')
 def training_progress():
-    """
-    Obtener progreso detallado del entrenamiento en tiempo real
-    """
     episodes = sim.train_stats.get('episodes', [])
     
     if len(episodes) == 0:
@@ -278,7 +236,6 @@ def training_progress():
     
     last_episode = episodes[-1] if episodes else {}
     
-    # Calcular progreso
     current_ep = int(last_episode.get('episode', 0))
     total_ep = int(len(episodes))
     
@@ -296,20 +253,15 @@ def training_progress():
 
 @app.get('/business-metrics')
 def business_metrics():
-    """
-    Calcular métricas de negocio y ROI
-    """
     episodes = sim.train_stats.get('episodes', [])
     
     if len(episodes) == 0:
         return {'status': 'no_data'}
     
-    # Calcular métricas agregadas
     avg_fuel_eff = float(sum(ep.get('avg_fuel_efficiency', 0) for ep in episodes) / len(episodes))
     avg_time_saved = float(sum(ep.get('time_saved_pct', 0) for ep in episodes) / len(episodes))
     total_harvested = int(sum(ep.get('harvested', 0) for ep in episodes))
     
-    # Cálculos de costos (simulados)
     fuel_cost_per_unit = 3.5
     hourly_labor_cost = 25
     
@@ -339,8 +291,6 @@ def business_metrics():
         'implementation_cost': float(implementation_cost),
         'payback_months': float(implementation_cost / max(1, monthly_savings))
     }
-
-# ========== DOCUMENTACIÓN ==========
 
 if __name__ == '__main__':
     import uvicorn

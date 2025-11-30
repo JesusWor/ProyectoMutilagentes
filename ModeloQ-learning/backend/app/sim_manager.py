@@ -199,22 +199,17 @@ class SimManager:
                         'nearby': set(),
                         'blackboard': self.env.blackboard
                     })
-                
-                # Los agentes siguen sus paths de A* (calculados en env.step)
-                # No necesitamos elegir acciones con Q-Learning aquí
+
                 proposals = self.env.step(self.agents)
                 
-                # Resolver colisiones
                 counts = {}
                 for p in proposals:
                     counts[p] = counts.get(p, 0) + 1
                 
                 finals = []
                 for i, p in enumerate(proposals):
-                    # Si hay colisión, el agente se queda en su lugar
                     finals.append(self.agents[i].pos if counts[p] > 1 else p)
                 
-                # Aplicar movimientos
                 rewards, infos, done = self.env.apply_final_positions_and_harvest(
                     self.agents, finals
                 )
@@ -222,7 +217,6 @@ class SimManager:
                 episode_reward += sum(rewards)
                 episode_fuel_consumed += sum(a.fuel_consumed for a in self.agents)
                 
-                # Actualizar Q-Learning (opcional, para aprender de la experiencia)
                 obs2_list = self.env._get_obs()
                 while len(obs2_list) < len(self.agents):
                     obs2_list.append(obs2_list[-1])
@@ -231,7 +225,6 @@ class SimManager:
                     state = agent.obs_to_state(obs_list[i])
                     next_state = agent.obs_to_state(obs2_list[i])
                     
-                    # Acción tomada (basada en el movimiento real)
                     action_map_inv = {(0,0): 0, (1,0): 1, (-1,0): 2, (0,1): 3, (0,-1): 4}
                     actual_move = (finals[i][0] - self.agents[i].pos[0], 
                                  finals[i][1] - self.agents[i].pos[1])
@@ -249,7 +242,6 @@ class SimManager:
             total_states = sum(len(a.Q) for a in self.agents)
             avg_fuel_efficiency = np.mean([a.calculate_efficiency_score() for a in self.agents])
             
-            # Calcular tiempo ahorrado (baseline vs actual)
             baseline_steps = 1000  # Tiempo sin optimización
             time_saved_pct = ((baseline_steps - (step + 1)) / baseline_steps) * 100
             
@@ -338,7 +330,7 @@ class SimManager:
             })
         with open(path, 'wb') as f:
             pickle.dump(data, f)
-        print(f"✓ Q-tables guardadas: {path}")
+        print(f"Q-tables guardadas: {path}")
 
     def load_qs(self, path=None):
         if path is None:
@@ -368,7 +360,6 @@ class SimManager:
 
     def save_stats(self):
         try:
-            # Convertir todos los valores numpy a tipos Python nativos
             stats_to_save = {
                 'episodes': [
                     {
