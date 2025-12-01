@@ -135,23 +135,6 @@ export default function App() {
 
   return (
     <div style={styles.app}>
-      {/* Header */}
-      <header style={styles.header}>
-        <h1 style={styles.title}>
-          🌾 Sistema Multi-Agente Agrícola
-        </h1>
-        <p style={styles.subtitle}>
-          Optimización Inteligente con Q-Learning y Gestión de Combustible
-        </p>
-        <p style={styles.description}>
-          Sistema de aprendizaje por refuerzo con múltiples agentes especializados que coordinan
-          tareas agrícolas optimizando recursos, reduciendo costos operativos y maximizando la 
-          eficiencia en dos parcelas de cultivo.
-          <span style={{...styles.badge, ...styles.badgeNew}}>
-            ⛽ Sistema de Combustible
-          </span>
-        </p>
-      </header>
 
       {/* Tabs */}
       <div style={styles.tabs}>

@@ -2,7 +2,6 @@ import random
 import numpy as np
 from heapq import heappush, heappop
 
-# Tipos de celdas
 EMPTY = 0
 OBST = 1
 CROP = 2
@@ -19,7 +18,6 @@ def heuristic(a, b):
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 def astar(start, goal, obstacles_set, w, h):
-    """A* pathfinding"""
     if start == goal:
         return [start]
     
@@ -67,10 +65,6 @@ def astar(start, goal, obstacles_set, w, h):
     return None
 
 class MultiFieldEnv:
-    """
-    Entorno con PARCELAS DEFINIDAS y sistema de combustible
-    """
-    
     def __init__(self, w=60, h=40, n_agents=6, crop_count=200, obst_count=30, parcels=None):
         self.w = w
         self.h = h
@@ -79,7 +73,6 @@ class MultiFieldEnv:
         self.crop_count = crop_count
         self.obst_count = obst_count
         
-        # Definir parcelas (2 hectáreas simuladas)
         if parcels is None:
             self.parcels = [
                 {
@@ -96,21 +89,14 @@ class MultiFieldEnv:
         else:
             self.parcels = parcels
         
-        # Ubicaciones de graneros (distribuidas en el mapa)
         self.planter_barn_pos = (3, 3)
         self.harvester_barn_pos = (w - 5, 3)
         self.irrigator_barn_pos = (3, h - 5)
         self.manager_pos = (w - 5, h - 5)
+        self.target_planted = crop_count  
+        self.target_irrigated = crop_count * 2  
+        self.target_harvested = crop_count
         
-        # OBJETIVOS DEL CICLO COMPLETO SECUENCIAL
-        # Fase 1: PLANTAR todo el campo vacío
-        self.target_planted = crop_count           # Plantar X cultivos
-        # Fase 2: IRRIGAR cada cultivo al menos 2 veces
-        self.target_irrigated = crop_count * 2     # Irrigar 2x cada cultivo
-        # Fase 3: COSECHAR todos los cultivos plantados e irrigados
-        self.target_harvested = crop_count         # Cosechar todo
-        
-        # Sistema de recompensas
         self.REWARD_HARVEST = 40.0
         self.REWARD_PLANT = 35.0
         self.REWARD_IRRIGATE = 30.0
@@ -122,7 +108,6 @@ class MultiFieldEnv:
         self.PENALTY_FAIL = -2.0
         self.PENALTY_OUT_OF_FUEL = -10.0
         
-        # Costos de combustible
         self.FUEL_COST_MOVE = 1
         self.FUEL_COST_PLANT = 2
         self.FUEL_COST_HARVEST = 2
@@ -132,39 +117,25 @@ class MultiFieldEnv:
         self.reset()
     
     def reset(self):
-        """Reinicia el entorno"""
         self.grid = np.zeros((self.h, self.w), dtype=int) + EMPTY
-        
-        # Colocar BORDES de parcelas primero
         self._create_parcel_borders()
-        
-        # Colocar graneros
         self._place_barn(self.planter_barn_pos, PLANTER_BARN)
         self._place_barn(self.harvester_barn_pos, HARVESTER_BARN)
         self._place_barn(self.irrigator_barn_pos, IRRIGATOR_BARN)
         self._place_barn(self.manager_pos, MANAGER)
-        
-        # Colocar cultivos DENTRO de las parcelas
         self._place_crops_in_parcels()
-        
-        # Colocar obstáculos (fuera de parcelas)
         self._place_obstacles_outside_parcels()
-        
-        # Posiciones iniciales de agentes
         self.agents_init = [
-            (4, 4),                    # Plantador 1
-            (5, 4),                    # Plantador 2
-            (self.w - 6, 4),           # Cosechador 1
-            (self.w - 7, 4),           # Cosechador 2
-            (4, self.h - 6),           # Irrigador 1
-            (5, self.h - 6)            # Irrigador 2
+            (4, 4),                    # Plantador
+            (5, 4),                    
+            (self.w - 6, 4),           # Cosechador
+            (self.w - 7, 4),         
+            (4, self.h - 6),           # Irrigador
+            (5, self.h - 6)           
         ]
         
-        # Mapas de estado
         self.compaction = np.zeros((self.h, self.w), dtype=int)
         self.water = np.zeros((self.h, self.w), dtype=int)
-        
-        # Blackboard
         self.blackboard = {
             'agents': {},
             'resources': {},
@@ -176,13 +147,11 @@ class MultiFieldEnv:
             }
         }
         
-        # Contadores del CICLO
         self.step_count = 0
         self.harvested_total = 0
         self.planted_total = 0
         self.irrigated_total = 0
         
-        # Fases del ciclo secuencial
         self.cycle_phase = 'planting'  # planting → irrigating → harvesting → complete
         self.phase_requirements = {
             'planting': self.target_planted,
@@ -193,19 +162,16 @@ class MultiFieldEnv:
         return self._get_obs()
     
     def _create_parcel_borders(self):
-        """Crea los bordes visuales de las parcelas"""
         for parcel in self.parcels:
             x_start, x_end = parcel['x_start'], parcel['x_end']
             y_start, y_end = parcel['y_start'], parcel['y_end']
             
-            # Borde superior e inferior
             for x in range(x_start, x_end):
                 if 0 <= y_start < self.h:
                     self.grid[y_start, x] = PARCEL_BORDER
                 if 0 <= y_end - 1 < self.h:
                     self.grid[y_end - 1, x] = PARCEL_BORDER
             
-            # Borde izquierdo y derecho
             for y in range(y_start, y_end):
                 if 0 <= x_start < self.w:
                     self.grid[y, x_start] = PARCEL_BORDER
@@ -213,7 +179,6 @@ class MultiFieldEnv:
                     self.grid[y, x_end - 1] = PARCEL_BORDER
     
     def _is_inside_parcel(self, x, y):
-        """Verifica si una coordenada está dentro de una parcela (sin contar bordes)"""
         for parcel in self.parcels:
             if (parcel['x_start'] + 1 <= x < parcel['x_end'] - 1 and 
                 parcel['y_start'] + 1 <= y < parcel['y_end'] - 1):
@@ -221,16 +186,12 @@ class MultiFieldEnv:
         return False
     
     def _place_crops_in_parcels(self):
-        """Coloca cultivos SOLO dentro de las parcelas"""
         placed = 0
         attempts = 0
         max_attempts = self.initial_crop_count * 20
         
         while placed < self.initial_crop_count and attempts < max_attempts:
-            # Elegir parcela aleatoria
             parcel = random.choice(self.parcels)
-            
-            # Generar posición dentro de la parcela (sin bordes)
             x = random.randrange(parcel['x_start'] + 1, parcel['x_end'] - 1)
             y = random.randrange(parcel['y_start'] + 1, parcel['y_end'] - 1)
             
@@ -243,7 +204,6 @@ class MultiFieldEnv:
         print(f"✓ Cultivos plantados: {placed}/{self.initial_crop_count}")
     
     def _place_obstacles_outside_parcels(self):
-        """Coloca obstáculos FUERA de las parcelas"""
         placed = 0
         attempts = 0
         max_attempts = self.obst_count * 10
@@ -254,7 +214,6 @@ class MultiFieldEnv:
             x = random.randrange(1, self.w - 1)
             y = random.randrange(1, self.h - 1)
             
-            # Solo colocar si NO está dentro de una parcela
             if not self._is_inside_parcel(x, y) and self.grid[y, x] == EMPTY:
                 self.grid[y, x] = OBST
                 self.obstacles.add((x, y))
@@ -263,7 +222,6 @@ class MultiFieldEnv:
             attempts += 1
     
     def _place_barn(self, pos, barn_type):
-        """Coloca un granero 2x2"""
         x, y = pos
         for dx in range(2):
             for dy in range(2):
@@ -271,7 +229,6 @@ class MultiFieldEnv:
                     self.grid[y + dy, x + dx] = barn_type
     
     def _get_obs(self):
-        """Genera observaciones para agentes"""
         obs = []
         occ = set(self.obstacles)
         
@@ -300,8 +257,6 @@ class MultiFieldEnv:
         Objetivo MÁS CERCANO según el rol Y LA FASE ACTUAL
         Los agentes SIEMPRE buscan trabajo, solo van al granero si necesitan combustible
         """
-        
-        # Si es su fase, buscar objetivos SIEMPRE
         if role == 'planter' and self.cycle_phase == 'planting':
             # Buscar tierra vacía dentro de parcelas
             targets = []
@@ -318,28 +273,23 @@ class MultiFieldEnv:
                 for x in range(self.w):
                     if self.grid[y, x] == CROP:
                         water_level = self.water[y, x]
-                        if water_level < 2:  # Necesita irrigación
-                            # Añadir múltiples veces según prioridad
-                            priority = 3 - water_level  # Más prioridad a menos agua
+                        if water_level < 2: 
+                            priority = 3 - water_level 
                             for _ in range(priority):
                                 targets.append((x, y))
                       
         elif role == 'harvester' and self.cycle_phase == 'harvesting':
-            # Buscar cultivos irrigados listos para cosechar
             targets = []
             for y in range(self.h):
                 for x in range(self.w):
                     if self.grid[y, x] == CROP and self.water[y, x] >= 1:
                         targets.append((x, y))
         else:
-            # No es su fase, ir al granero a esperar
             return self._get_barn_for_role(role)
         
         if not targets:
-            # No hay trabajo disponible, ir al granero
             return self._get_barn_for_role(role)
         
-        # Encontrar el objetivo MÁS CERCANO usando distancia Manhattan
         min_dist = float('inf')
         nearest = targets[0]
         for t in targets:
@@ -351,7 +301,6 @@ class MultiFieldEnv:
         return nearest
     
     def _get_barn_for_role(self, role):
-        """Retorna el granero del rol"""
         if role == 'planter':
             return self.planter_barn_pos
         elif role == 'harvester':
@@ -361,7 +310,6 @@ class MultiFieldEnv:
         return self.manager_pos
     
     def _update_cycle_phase(self):
-        """Actualiza la fase del ciclo de forma SECUENCIAL"""
         # FASE 1: PLANTING - Solo plantadores trabajan
         if self.cycle_phase == 'planting':
             if self.planted_total >= self.target_planted:
@@ -384,7 +332,6 @@ class MultiFieldEnv:
                 print(f"🎉 ¡CICLO COMPLETO!")
     
     def get_phase_progress(self):
-        """Retorna el progreso de la fase actual"""
         if self.cycle_phase == 'planting':
             return (self.planted_total / max(1, self.target_planted)) * 100
         elif self.cycle_phase == 'irrigating':
@@ -395,7 +342,6 @@ class MultiFieldEnv:
             return 100
     
     def _update_blackboard_from_agents(self, agents):
-        """Actualiza blackboard"""
         for ag in agents:
             self.blackboard['agents'][f'agent_{ag.id}'] = {
                 'pos': tuple(ag.pos),
@@ -410,81 +356,57 @@ class MultiFieldEnv:
             }
     
     def compute_paths(self, agents):
-        """
-        Calcula caminos A* para todos los agentes
-        Los agentes SIEMPRE buscan trabajo activamente
-        """
         obstset = set(self.obstacles)
-        
-        # Agregar posiciones de otros agentes como obstáculos temporales
         agent_positions = set(ag.pos for ag in agents)
         
         for i, ag in enumerate(agents):
             start = ag.pos
-            
-            # Determinar objetivo basado en estado del agente
             if ag.should_return_to_barn():
-                # URGENTE: Necesita regresar al granero
                 goal = ag.barn_pos
                 ag.is_returning_to_barn = True
             else:
-                # TRABAJO: Buscar objetivo más cercano
                 goal = self._get_smart_goal(start, ag.role)
                 ag.is_returning_to_barn = False
             
-            # Crear set de obstáculos incluyendo otros agentes (excepto el actual)
             obstacles_with_agents = obstset.copy()
             for other_ag in agents:
                 if other_ag.id != ag.id:
                     obstacles_with_agents.add(other_ag.pos)
             
-            # Calcular path con A*
             path = astar(start, goal, obstacles_with_agents, self.w, self.h)
             
             if path and len(path) > 1:
-                ag.path = path[1:]  # Excluir posición actual
+                ag.path = path[1:] 
             else:
                 ag.path = []
             
             ag.current_goal = goal
     
     def step(self, agents, actions_by_q=None):
-        """
-        Ejecuta un paso
-        Los agentes siguen sus paths de A* calculados
-        """
         self.step_count += 1
         
         self._update_blackboard_from_agents(agents)
         self._update_cycle_phase()
         self.compute_paths(agents)
         
-        # Propuestas de movimiento basadas en A*
         proposals = []
         for i, ag in enumerate(agents):
-            # Usar el path calculado por A* si existe
             if ag.path and len(ag.path) > 0:
                 next_pos = ag.path[0]
                 proposals.append(next_pos)
             else:
-                # Sin path válido, quedarse en su lugar
                 proposals.append(ag.pos)
         
         return proposals
     
     def apply_final_positions_and_harvest(self, agents, final_positions):
-        """Aplica movimientos con sistema de combustible y FASES SECUENCIALES"""
         rewards = [0.0] * len(agents)
         infos = [{} for _ in agents]
         
         for i, ag in enumerate(agents):
             newpos = final_positions[i]
             old_pos = ag.pos
-            
-            # Verificar si se movió
             moved = (newpos != old_pos)
-            
-            # CONSUMIR COMBUSTIBLE POR MOVIMIENTO
             if moved:
                 if not ag.consume_fuel(self.FUEL_COST_MOVE):
                     rewards[i] += self.PENALTY_OUT_OF_FUEL
@@ -492,7 +414,6 @@ class MultiFieldEnv:
                     ag.is_returning_to_barn = True
                     continue
             
-            # Recompensa por acercarse al objetivo
             if hasattr(ag, 'current_goal'):
                 old_dist = heuristic(old_pos, ag.current_goal)
                 new_dist = heuristic(newpos, ag.current_goal)
@@ -500,18 +421,15 @@ class MultiFieldEnv:
                 if new_dist < old_dist:
                     rewards[i] += self.REWARD_APPROACH_TARGET
             
-            # Actualizar posición
             ag.pos = newpos
             x, y = newpos
             
-            # Consumir el primer elemento del path si se movió exitosamente
             if moved and hasattr(ag, 'path') and len(ag.path) > 0:
                 if ag.path[0] == newpos:
-                    ag.path.pop(0)  # Remover posición alcanzada
+                    ag.path.pop(0)
             
             rewards[i] += self.PENALTY_STEP
             
-            # Recarga en granero
             if ag.is_at_barn():
                 if ag.recharge_at_barn(self.FUEL_RECHARGE_RATE):
                     rewards[i] += 15.0
@@ -519,10 +437,7 @@ class MultiFieldEnv:
                         rewards[i] += self.REWARD_FUEL_EFFICIENT
                     infos[i]['recharged'] = True
                 continue
-            
-            # ===== ACCIONES SEGÚN FASE DEL CICLO =====
-            
-            # FASE 1: SOLO PLANTADORES pueden trabajar
+            # FASE 1: SOLO PLANTADORES
             if self.cycle_phase == 'planting':
                 if ag.role == 'planter' and self.grid[y, x] == EMPTY and self._is_inside_parcel(x, y):
                     if ag.use_capacity(1) and ag.consume_fuel(self.FUEL_COST_PLANT):
@@ -531,16 +446,14 @@ class MultiFieldEnv:
                         self.planted_total += 1
                         rewards[i] += self.REWARD_PLANT
                         infos[i]['planted'] = True
-                        # Limpiar path para buscar nuevo objetivo
                         ag.path = []
                     else:
                         ag.is_returning_to_barn = True
                 
-                # Otros agentes esperan (pequeña recompensa por no estorbar)
                 elif ag.role != 'planter':
                     rewards[i] += 0.5
             
-            # FASE 2: SOLO IRRIGADORES pueden trabajar
+            # FASE 2: SOLO IRRIGADORES
             elif self.cycle_phase == 'irrigating':
                 if ag.role == 'irrigator' and self.grid[y, x] == CROP:
                     if ag.use_capacity(1) and ag.consume_fuel(self.FUEL_COST_IRRIGATE):
@@ -549,44 +462,36 @@ class MultiFieldEnv:
                         self.irrigated_total += 1
                         rewards[i] += self.REWARD_IRRIGATE
                         infos[i]['irrigated'] = True
-                        # Limpiar path para buscar nuevo objetivo
                         ag.path = []
                     else:
                         ag.is_returning_to_barn = True
                 
-                # Otros agentes esperan
                 elif ag.role != 'irrigator':
                     rewards[i] += 0.5
             
-            # FASE 3: SOLO COSECHADORES pueden trabajar
+            # FASE 3: SOLO COSECHADORES
             elif self.cycle_phase == 'harvesting':
                 if ag.role == 'harvester' and self.grid[y, x] == CROP:
-                    # Verificar que el cultivo esté irrigado
                     if self.water[y, x] >= 1:
                         if ag.use_capacity(1) and ag.consume_fuel(self.FUEL_COST_HARVEST):
                             self.grid[y, x] = PATH
                             ag.harvested += 1
                             self.harvested_total += 1
                             rewards[i] += self.REWARD_HARVEST
-                            # Bonus por cosechar cultivo bien irrigado
                             if self.water[y, x] >= 2:
                                 rewards[i] += 10.0
                             infos[i]['harvested'] = True
-                            # Limpiar path para buscar nuevo objetivo
                             ag.path = []
                         else:
                             ag.is_returning_to_barn = True
                     else:
                         rewards[i] += self.PENALTY_FAIL
-                
-                # Otros agentes esperan
                 elif ag.role != 'harvester':
                     rewards[i] += 0.5
             
-            # Verificar si debe regresar (basado en combustible)
             if ag.should_return_to_barn() and not ag.is_at_barn():
                 ag.is_returning_to_barn = True
-                ag.path = []  # Forzar recálculo del path al granero
+                ag.path = [] 
         
         # CONDICIÓN DE TERMINACIÓN: CICLO COMPLETO
         done = self.is_task_complete()
@@ -603,7 +508,6 @@ class MultiFieldEnv:
         return rewards, infos, done
     
     def is_task_complete(self):
-        """Verifica si el CICLO COMPLETO está terminado"""
         return (
             self.planted_total >= self.target_planted and
             self.irrigated_total >= self.target_irrigated and
@@ -611,7 +515,6 @@ class MultiFieldEnv:
         )
     
     def get_metrics(self):
-        """Métricas del entorno"""
         return {
             'step': int(self.step_count),
             'cycle_phase': str(self.cycle_phase),
@@ -636,7 +539,6 @@ class MultiFieldEnv:
         }
     
     def get_completion_percentage(self):
-        """Porcentaje de completitud del ciclo"""
         planted_pct = min(100, (self.planted_total / max(1, self.target_planted)) * 100)
         irrigated_pct = min(100, (self.irrigated_total / max(1, self.target_irrigated)) * 100)
         harvested_pct = min(100, (self.harvested_total / max(1, self.target_harvested)) * 100)

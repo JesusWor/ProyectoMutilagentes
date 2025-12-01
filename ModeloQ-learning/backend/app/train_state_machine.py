@@ -1,4 +1,3 @@
-    # train_state_machine.py
 import threading
 import time
 import os
@@ -14,28 +13,16 @@ from .config import (
 from .env import MultiFieldEnv
 from .agents import FarmAgent
 
-
 class PhaseState:
-    """Estados de la máquina de estados del ciclo agrícola"""
     PLANTING = 'planting'
     GROWTH = 'growth'
     HARVESTING = 'harvesting'
     CYCLE_COMPLETE = 'cycle_complete'
 
-
 class StateMachineTrainer:
-    """
-    Entrenador con máquina de estados que implementa un ciclo agrícola completo:
-    1. PLANTING: Plantadores siembran cultivos
-    2. GROWTH: Irrigadores riegan mientras los cultivos crecen
-    3. HARVESTING: Cosechadores recolectan cultivos maduros
-    4. CYCLE_COMPLETE: Episodio termina, se reinicia
-    """
-    
     def __init__(self, width=GRID_W, height=GRID_H, n_agents=N_AGENTS):
         self.env = MultiFieldEnv(w=width, h=height, n_agents=n_agents)
         self.agents = []
-        
         # Crear agentes con roles específicos
         for i in range(self.env.n_agents):
             role = AGENT_ROLES[i] if i < len(AGENT_ROLES) else 'harvester'
@@ -51,13 +38,10 @@ class StateMachineTrainer:
                 eps=DEFAULT_EPS
             )
             self.agents.append(a)
-        
-        # Control de entrenamiento
         self.running = False
         self.train_thread = None
         self.lock = threading.Lock()
         
-        # Parámetros
         self.params = {
             'alpha': DEFAULT_ALPHA,
             'gamma': DEFAULT_GAMMA,
@@ -65,7 +49,6 @@ class StateMachineTrainer:
             'eps_decay': EPS_DECAY
         }
         
-        # Estadísticas
         self.train_stats = {
             'episodes': [],
             'current_phase': PhaseState.PLANTING,
@@ -73,17 +56,14 @@ class StateMachineTrainer:
             'total_episodes': 0
         }
         
-        # Umbrales de fase (cuándo pasar a la siguiente)
         self.phase_thresholds = {
-            PhaseState.PLANTING: 0.65,      # 65% de celdas plantadas
-            PhaseState.GROWTH: 50,           # 50 pasos para que cultivos crezcan
-            PhaseState.HARVESTING: 0.80      # 80% de cultivos cosechados
+            PhaseState.PLANTING: 0.65,    
+            PhaseState.GROWTH: 50, 
+            PhaseState.HARVESTING: 0.80
         }
         
     def _should_transition_phase(self, phase):
-        """Determina si debe transicionar a la siguiente fase"""
         if phase == PhaseState.PLANTING:
-            # Contar cultivos plantados vs total buildable
             total_buildable = len(self.env.buildable_cells)
             planted = sum(1 for (x, y) in self.env.buildable_cells 
                          if self.env.grid[y, x] == 2)  # CROP = 2
@@ -91,7 +71,6 @@ class StateMachineTrainer:
             return ratio >= self.phase_thresholds[PhaseState.PLANTING]
         
         elif phase == PhaseState.GROWTH:
-            # Contar cultivos maduros
             crops = np.sum(self.env.grid == 2)  # CROP
             if crops == 0:
                 return False
@@ -100,15 +79,12 @@ class StateMachineTrainer:
             return mature > 0
         
         elif phase == PhaseState.HARVESTING:
-            # Contar si hay cultivos sin cosechar
             remaining = np.sum(self.env.grid == 2)
             return remaining == 0
         
         return False
     
     def _reset_phase_for_next_cycle(self):
-        """Prepara el entorno para el siguiente ciclo"""
-        # Limpiar el campo
         buildable = self.env.buildable_cells
         for x, y in buildable:
             self.env.grid[y, x] = 0  # EMPTY
@@ -127,20 +103,14 @@ class StateMachineTrainer:
             agent.path = []
     
     def train_background(self, episodes=20, steps_per_episode=500):
-        """Loop principal de entrenamiento con máquina de estados"""
         self.running = True
         self.train_stats['total_episodes'] = episodes
-        
         for ep in range(episodes):
             if not self.running:
                 break
-            
             self.train_stats['current_episode'] = ep + 1
-            
-            # Resetear entorno y agentes
             self.env.reset()
             self._reset_phase_for_next_cycle()
-            
             phase = PhaseState.PLANTING
             phase_step_count = 0
             episode_total_reward = 0.0
@@ -153,32 +123,25 @@ class StateMachineTrainer:
                 'phases': {}
             }
             
-            # Loop de episodio (hasta completar ciclo agrícola)
             for step in range(steps_per_episode):
                 if not self.running:
                     break
                 
                 phase_step_count += 1
                 self.env.step_count += 1
-                
-                # Obtener observaciones
                 obs_list = self.env._get_obs()
                 actions = {}
                 states = []
-                
-                # Seleccionar acciones según fase
                 for i, agent in enumerate(self.agents):
                     obs = obs_list[i]
                     s = agent.obs_to_state(obs)
                     states.append(s)
                     
-                    # Lógica de acción según fase y rol
                     if phase == PhaseState.PLANTING:
                         if agent.role == 'planter':
                             ai = agent.choose_action(s, training=True)
                             actions[i] = {0: (0,0), 1: (1,0), 2: (-1,0), 3: (0,1), 4: (0,-1)}[ai]
                         else:
-                            # No-plantadores van al granero o inactivos
                             actions[i] = (0, 0)
                     
                     elif phase == PhaseState.GROWTH:
@@ -186,7 +149,6 @@ class StateMachineTrainer:
                             ai = agent.choose_action(s, training=True)
                             actions[i] = {0: (0,0), 1: (1,0), 2: (-1,0), 3: (0,1), 4: (0,-1)}[ai]
                         elif agent.role == 'planter':
-                            # Plantadores regresan al granero
                             actions[i] = (0, 0)
                         else:
                             actions[i] = (0, 0)
@@ -201,7 +163,6 @@ class StateMachineTrainer:
                     else:
                         actions[i] = (0, 0)
                 
-                # Calcular movimientos finales
                 proposals = self.env.step(self.agents, actions_by_q=actions)
                 pos_counts = {}
                 for p in proposals:
@@ -214,14 +175,10 @@ class StateMachineTrainer:
                     else:
                         finals.append(p)
                 
-                # Aplicar acciones y obtener recompensas
                 rewards, infos, done = self.env.apply_final_positions_and_harvest(
                     self.agents, finals
                 )
-                
                 episode_total_reward += sum(rewards)
-                
-                # Actualizar Q-Learning
                 obs2_list = self.env._get_obs()
                 for i, agent in enumerate(self.agents):
                     s2 = agent.obs_to_state(obs2_list[i])
