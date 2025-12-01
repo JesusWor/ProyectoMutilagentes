@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from .sim_manager import SimManager
 import os
 import numpy as np
+import json
+import asyncio
 
 def convert_numpy_types(obj):
     if isinstance(obj, np.integer):
@@ -26,6 +28,28 @@ app = FastAPI(
     description="Sistema de entrenamiento multi-agente para simulación agrícola con combustible",
     version="3.0"
 )
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("Unity conectado ✔")
+
+    try:
+        while True:
+            # ❗ Ejemplo: actualizamos posición en base al estado del sim
+            state = sim.get_state()  # devolverá dict con numpy → ya convertido
+            state = convert_numpy_types(state)
+
+            # Si tu simulación devuelve múltiples agentes, aquí mandamos el primero
+            agent_pos = state.get("agents", [{}])[0] if "agents" in state else {
+                "x": 0, "y": 0, "z": 0
+            }
+
+            await websocket.send_text(json.dumps(agent_pos))
+            await asyncio.sleep(0.05)  # ≈ 20fps  
+
+    except WebSocketDisconnect:
+        print("Unity desconectado ❌")
 
 app.add_middleware(
     CORSMiddleware,

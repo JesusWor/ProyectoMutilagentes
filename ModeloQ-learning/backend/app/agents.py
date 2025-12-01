@@ -2,6 +2,7 @@ import random
 import numpy as np
 from collections import defaultdict
 
+
 ACTIONS = [(0,0), (1,0), (-1,0), (0,1), (0,-1)]
 
 def zero_q():
