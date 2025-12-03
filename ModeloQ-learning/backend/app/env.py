@@ -361,6 +361,8 @@ class MultiFieldEnv:
         
         for i, ag in enumerate(agents):
             start = ag.pos
+            
+            # 1. Determinar Objetivo
             if ag.should_return_to_barn():
                 goal = ag.barn_pos
                 ag.is_returning_to_barn = True
@@ -368,12 +370,24 @@ class MultiFieldEnv:
                 goal = self._get_smart_goal(start, ag.role)
                 ag.is_returning_to_barn = False
             
-            obstacles_with_agents = obstset.copy()
+            # 2. Definir Obstáculos para este agente
+            obstacles_for_this_agent = obstset.copy()
             for other_ag in agents:
                 if other_ag.id != ag.id:
-                    obstacles_with_agents.add(other_ag.pos)
+                    if other_ag.pos == goal:
+                        continue
+                    obstacles_for_this_agent.add(other_ag.pos)
             
-            path = astar(start, goal, obstacles_with_agents, self.w, self.h)
+            # --- CORRECCIÓN CRÍTICA AQUÍ ---
+            # Si mi meta está ocupada por otro agente (ej. un compañero en el granero),
+            # la quitamos de la lista de obstáculos para que A* no falle.
+            # Esto permite trazar una ruta HASTA el compañero.
+            if goal in obstacles_for_this_agent:
+                obstacles_for_this_agent.remove(goal)
+            # -------------------------------
+            
+            # 3. Calcular Ruta
+            path = astar(start, goal, obstacles_for_this_agent, self.w, self.h)
             
             if path and len(path) > 1:
                 ag.path = path[1:] 
@@ -407,13 +421,17 @@ class MultiFieldEnv:
             newpos = final_positions[i]
             old_pos = ag.pos
             moved = (newpos != old_pos)
+            
+            # 1. Consumo de combustible por movimiento
             if moved:
                 if not ag.consume_fuel(self.FUEL_COST_MOVE):
                     rewards[i] += self.PENALTY_OUT_OF_FUEL
                     infos[i]['out_of_fuel'] = True
                     ag.is_returning_to_barn = True
-                    continue
+                    # Si no tiene gasolina, no se mueve (se queda en old_pos)
+                    continue 
             
+            # 2. Recompensa por acercarse al objetivo (Shaping)
             if hasattr(ag, 'current_goal'):
                 old_dist = heuristic(old_pos, ag.current_goal)
                 new_dist = heuristic(newpos, ag.current_goal)
@@ -421,22 +439,37 @@ class MultiFieldEnv:
                 if new_dist < old_dist:
                     rewards[i] += self.REWARD_APPROACH_TARGET
             
+            # 3. Actualizar posición física
             ag.pos = newpos
             x, y = newpos
             
+            # Actualizar path del agente (borrar el paso que ya dio)
             if moved and hasattr(ag, 'path') and len(ag.path) > 0:
                 if ag.path[0] == newpos:
                     ag.path.pop(0)
             
             rewards[i] += self.PENALTY_STEP
             
-            if ag.is_at_barn():
+            # --- 🔥 MODIFICACIÓN: ZONA DE PARKING AMPLIADA 🔥 ---
+            # Calculamos distancia Manhattan al granero
+            dist_to_barn = abs(x - ag.barn_pos[0]) + abs(y - ag.barn_pos[1])
+            
+            # Condición relajada: Si está en el centro O cerca (<= 2) y quiere volver
+            in_parking_zone = ag.is_at_barn() or (dist_to_barn <= 2 and ag.is_returning_to_barn)
+
+            if in_parking_zone:
+                # Intentar recargar/descargar
+                # Nota: recharge_at_barn devuelve True si terminó o está en proceso
                 if ag.recharge_at_barn(self.FUEL_RECHARGE_RATE):
                     rewards[i] += 15.0
                     if ag.calculate_efficiency_score() > 80:
                         rewards[i] += self.REWARD_FUEL_EFFICIENT
                     infos[i]['recharged'] = True
+                
+                # Si está en zona de parking, no hace nada más (no cosecha ni riega)
                 continue
+            # -------------------------------------------------------
+
             # FASE 1: SOLO PLANTADORES
             if self.cycle_phase == 'planting':
                 if ag.role == 'planter' and self.grid[y, x] == EMPTY and self._is_inside_parcel(x, y):
@@ -446,12 +479,12 @@ class MultiFieldEnv:
                         self.planted_total += 1
                         rewards[i] += self.REWARD_PLANT
                         infos[i]['planted'] = True
-                        ag.path = []
+                        ag.path = [] # Limpiar ruta para buscar nuevo objetivo cercano
                     else:
                         ag.is_returning_to_barn = True
                 
                 elif ag.role != 'planter':
-                    rewards[i] += 0.5
+                    rewards[i] += 0.5 # Pequeña recompensa por existir (evitar suicidio)
             
             # FASE 2: SOLO IRRIGADORES
             elif self.cycle_phase == 'irrigating':
@@ -472,33 +505,35 @@ class MultiFieldEnv:
             # FASE 3: SOLO COSECHADORES
             elif self.cycle_phase == 'harvesting':
                 if ag.role == 'harvester' and self.grid[y, x] == CROP:
+                    # Solo cosechar si está regado (opcional, según tu regla)
                     if self.water[y, x] >= 1:
                         if ag.use_capacity(1) and ag.consume_fuel(self.FUEL_COST_HARVEST):
-                            self.grid[y, x] = PATH
+                            self.grid[y, x] = PATH # O EMPTY
                             ag.harvested += 1
                             self.harvested_total += 1
                             rewards[i] += self.REWARD_HARVEST
                             if self.water[y, x] >= 2:
-                                rewards[i] += 10.0
+                                rewards[i] += 10.0 # Bonus por cultivo bien regado
                             infos[i]['harvested'] = True
                             ag.path = []
                         else:
                             ag.is_returning_to_barn = True
                     else:
-                        rewards[i] += self.PENALTY_FAIL
+                        rewards[i] += self.PENALTY_FAIL # Penalización por cosechar seco
                 elif ag.role != 'harvester':
                     rewards[i] += 0.5
             
-            if ag.should_return_to_barn() and not ag.is_at_barn():
+            # Chequeo general de retorno (por si se gastó fuel en esta acción)
+            if ag.should_return_to_barn() and not in_parking_zone:
                 ag.is_returning_to_barn = True
                 ag.path = [] 
         
         # CONDICIÓN DE TERMINACIÓN: CICLO COMPLETO
         done = self.is_task_complete()
         
-        # BONUS MASIVO por completar el ciclo
         if done:
             cycle_bonus = self.REWARD_CYCLE_COMPLETE
+            # Bonus de eficiencia por tiempo (pasos)
             efficiency_bonus = max(0, 300.0 - (self.step_count / 10))
             total_bonus = cycle_bonus + efficiency_bonus
             
@@ -544,3 +579,10 @@ class MultiFieldEnv:
         harvested_pct = min(100, (self.harvested_total / max(1, self.target_harvested)) * 100)
         
         return int((planted_pct + irrigated_pct + harvested_pct) / 3)
+    
+    def update_crops(self):
+        for y in range(self.h):
+            for x in range(self.w):
+                if self.grid[y, x] == 2:  # CROP
+                # Lógica de crecimiento
+                    pass
