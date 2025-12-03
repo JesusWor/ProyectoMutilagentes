@@ -38,33 +38,36 @@ async def websocket_endpoint(websocket: WebSocket):
         step_count = 0
 
         while True:
-            # Usamos 'lock' para que no choque si hay otro hilo entrenando
-            with sim.lock:
 
-                obs_list = sim.env._get_obs()
-                actions = {}
+            try:
+                with sim.lock:
+                    obs_list = sim.env._get_obs()
+                    actions = {}
 
-                for i, agent in enumerate(sim.agents):
-                    # 'best_action' decide la mejor jugada según lo que el agente ha aprendido
-                    action_idx = sim.best_action(agent, obs_list[i])
+                    for i, agent in enumerate(sim.agents):
+                        # 'best_action' decide la mejor jugada según lo que el agente ha aprendido
+                        action_idx = sim.best_action(agent, obs_list[i])
+                        
+                        # Traducir el ID de acción (0-4) a movimiento real (dx, dy)
+                        # Ver exactamente qué hace estas líneas de código
+                        move_map = {0: (0,0), 1: (1,0), 2: (-1,0), 3: (0,1), 4: (0,-1)}
+                        actions[i] = move_map.get(action_idx, (0,0))
+
+                    proposals = sim.env.step(sim.agents, actions_by_q=actions)
                     
-                    # Traducir el ID de acción (0-4) a movimiento real (dx, dy)
-                    # Ver exactamente qué hace estas líneas de código
-                    move_map = {0: (0,0), 1: (1,0), 2: (-1,0), 3: (0,1), 4: (0,-1)}
-                    actions[i] = move_map.get(action_idx, (0,0))
+                    counts = {}
+                    for p in proposals: counts[p] = counts.get(p, 0) + 1
+                    
+                    finals = []
+                    for i, p in enumerate(proposals):
+                        if counts[p] > 1: 
+                            finals.append(sim.agents[i].pos)
+                        else: 
+                            finals.append(p)
+                    sim.env.apply_final_positions_and_harvest(sim.agents, finals)
 
-                proposals = sim.env.step(sim.agents, actions_by_q=actions)
-                
-                counts = {}
-                for p in proposals: counts[p] = counts.get(p, 0) + 1
-                
-                finals = []
-                for i, p in enumerate(proposals):
-                    if counts[p] > 1: 
-                        finals.append(sim.agents[i].pos)
-                    else: 
-                        finals.append(p)
-                sim.env.apply_final_positions_and_harvest(sim.agents, finals)
+            except Exception as e_inner:
+                print(f"Error en frame {step_count}: {e_inner}")
                 
             raw_state = sim.get_state()
 
